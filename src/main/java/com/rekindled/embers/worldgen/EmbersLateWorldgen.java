@@ -1,6 +1,7 @@
 package com.rekindled.embers.worldgen;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -8,18 +9,24 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.WeakHashMap;
 
+import com.rekindled.embers.ConfigManager;
 import com.rekindled.embers.Embers;
 import com.rekindled.embers.RegistryManager;
 import com.rekindled.embers.datagen.EmbersConfiguredFeatures;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
+import net.minecraft.core.HolderSet;
 import net.minecraft.core.Vec3i;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerChunkCache;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.BiomeTags;
+import net.minecraft.tags.TagKey;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.MobCategory;
@@ -32,6 +39,9 @@ import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.levelgen.feature.ConfiguredFeature;
+import net.minecraft.world.level.levelgen.feature.configurations.OreConfiguration;
+import net.minecraft.world.level.levelgen.placement.PlacedFeature;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.templatesystem.LiquidSettings;
@@ -47,6 +57,8 @@ public class EmbersLateWorldgen {
 	private static final int ORE_NEIGHBOR_RADIUS = 1;
 	private static final int RUIN_AVERAGE_CHUNK_CHANCE = 49;
 	private static final int RUIN_SALT = 193826405;
+	private static final TagKey<Block> LEAD_ORES = BlockTags.create(ResourceLocation.fromNamespaceAndPath("c", "ores/lead"));
+	private static final TagKey<Block> SILVER_ORES = BlockTags.create(ResourceLocation.fromNamespaceAndPath("c", "ores/silver"));
 	private static final ResourceLocation[] RUINS = new ResourceLocation[] {
 			ResourceLocation.fromNamespaceAndPath(Embers.MODID, "small_ruin_copper"),
 			ResourceLocation.fromNamespaceAndPath(Embers.MODID, "small_ruin_iron"),
@@ -57,7 +69,19 @@ public class EmbersLateWorldgen {
 	private static final int[] RUIN_WEIGHTS = new int[] { 2, 2, 1, 2, 1 };
 	private static final Map<ServerLevel, Set<Long>> PENDING_CHUNKS = new HashMap<>();
 	private static final Map<ServerLevel, Set<Long>> FORCED_CHUNKS = new HashMap<>();
+	private static final Map<ChunkGenerator, ExternalOreGeneration> EXTERNAL_ORE_GENERATION = Collections.synchronizedMap(new WeakHashMap<>());
 	private record QueuedChunk(ServerLevel level, ChunkPos pos, boolean force) {
+	}
+	private record OreGenerationSelection(boolean lead, boolean silver) {
+	}
+	private record ExternalOreGeneration(Set<ResourceLocation> leadOres, Set<ResourceLocation> silverOres) {
+		private boolean hasLead() {
+			return !leadOres.isEmpty();
+		}
+
+		private boolean hasSilver() {
+			return !silverOres.isEmpty();
+		}
 	}
 
 	private EmbersLateWorldgen() {
@@ -164,26 +188,82 @@ public class EmbersLateWorldgen {
 	}
 
 	private static void placeMissingOreFeatures(ServerLevel level, ChunkPos pos, RandomSource random, boolean force) {
+		OreGenerationSelection selection = getOreGenerationSelection(level);
+		if (!selection.lead() && !selection.silver()) {
+			return;
+		}
+
 		BlockPos origin = new BlockPos(pos.getMinBlockX(), level.getMinBuildHeight(), pos.getMinBlockZ());
 		BlockPos biomeCheck = new BlockPos(pos.getMiddleBlockX(), Mth.clamp(level.getSeaLevel(), level.getMinBuildHeight(), level.getMaxBuildHeight() - 1), pos.getMiddleBlockZ());
 		ChunkGenerator generator = level.getChunkSource().getGenerator();
 		if (!hasLoadedNeighborRing(level, pos, ORE_NEIGHBOR_RADIUS)) {
 			return;
 		}
-		placeMissingOreFeature(level, generator, random, origin, biomeCheck, force, 8, -28, 28, true);
-		placeMissingOreFeature(level, generator, random, origin, biomeCheck, force, 4, level.getMinBuildHeight(), level.getMinBuildHeight() + 64, false);
+		if (selection.lead()) {
+			placeMissingOreFeature(level, generator, random, origin, biomeCheck, force, 8, -28, 28, EmbersConfiguredFeatures.ORE_LEAD);
+		}
+		if (selection.silver()) {
+			placeMissingOreFeature(level, generator, random, origin, biomeCheck, force, 4, level.getMinBuildHeight(), level.getMinBuildHeight() + 64, EmbersConfiguredFeatures.ORE_SILVER);
+		}
 	}
 
-	private static void placeMissingOreFeature(ServerLevel level, ChunkGenerator generator, RandomSource random, BlockPos origin, BlockPos biomeCheck, boolean force, int count, int minY, int maxY, boolean lead) {
+	private static void placeMissingOreFeature(ServerLevel level, ChunkGenerator generator, RandomSource random, BlockPos origin, BlockPos biomeCheck, boolean force, int count, int minY, int maxY, ConfiguredFeature<?, ?> feature) {
 		if (!force && !isValidBiome(level, biomeCheck)) {
 			return;
 		}
 		for (int i = 0; i < count; i++) {
 			BlockPos orePos = new BlockPos(origin.getX() + random.nextInt(16), sampleTriangle(random, level, minY, maxY), origin.getZ() + random.nextInt(16));
-			if (lead) {
-				EmbersConfiguredFeatures.ORE_LEAD.place(level, generator, random, orePos);
-			} else {
-				EmbersConfiguredFeatures.ORE_SILVER.place(level, generator, random, orePos);
+			feature.place(level, generator, random, orePos);
+		}
+	}
+
+	private static OreGenerationSelection getOreGenerationSelection(ServerLevel level) {
+		return switch (ConfigManager.ORE_GENERATION.get()) {
+			case NEVER -> new OreGenerationSelection(false, false);
+			case ALWAYS -> new OreGenerationSelection(true, true);
+			case AUTO -> {
+				ExternalOreGeneration external = EXTERNAL_ORE_GENERATION.computeIfAbsent(level.getChunkSource().getGenerator(),
+						ignored -> detectExternalOreGeneration(level));
+				yield new OreGenerationSelection(!external.hasLead(), !external.hasSilver());
+			}
+		};
+	}
+
+	private static ExternalOreGeneration detectExternalOreGeneration(ServerLevel level) {
+		Set<ResourceLocation> leadOres = new HashSet<>();
+		Set<ResourceLocation> silverOres = new HashSet<>();
+		ChunkGenerator generator = level.getChunkSource().getGenerator();
+
+		for (Holder<Biome> biome : generator.getBiomeSource().possibleBiomes()) {
+			if (!biome.is(BiomeTags.IS_OVERWORLD)) {
+				continue;
+			}
+			for (HolderSet<PlacedFeature> step : biome.value().getGenerationSettings().features()) {
+				for (Holder<PlacedFeature> placedFeature : step) {
+					placedFeature.value().getFeatures().forEach(feature -> collectExternalOreTargets(feature, leadOres, silverOres));
+				}
+			}
+		}
+
+		ExternalOreGeneration detected = new ExternalOreGeneration(Set.copyOf(leadOres), Set.copyOf(silverOres));
+		Embers.LOGGER.info("Embers automatic ore detection found external lead ores {} and external silver ores {}", detected.leadOres(), detected.silverOres());
+		return detected;
+	}
+
+	private static void collectExternalOreTargets(ConfiguredFeature<?, ?> feature, Set<ResourceLocation> leadOres, Set<ResourceLocation> silverOres) {
+		if (!(feature.config() instanceof OreConfiguration oreConfiguration)) {
+			return;
+		}
+		for (OreConfiguration.TargetBlockState target : oreConfiguration.targetStates) {
+			ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(target.state.getBlock());
+			if (Embers.MODID.equals(blockId.getNamespace())) {
+				continue;
+			}
+			if (target.state.is(LEAD_ORES)) {
+				leadOres.add(blockId);
+			}
+			if (target.state.is(SILVER_ORES)) {
+				silverOres.add(blockId);
 			}
 		}
 	}

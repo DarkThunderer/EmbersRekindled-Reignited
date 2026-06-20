@@ -1131,6 +1131,8 @@ public class EmbersLang extends LanguageProvider {
 		add(Embers.MODID + ".research.page.projectile_augments_category", "Projectile Augments");
 		add(Embers.MODID + ".research.page.misc_augments_category", "Other Augments");
 
+		addConfigLabel("worldgen", "World Generation");
+		addConfigLabel("worldgen.generate_ores", "Generate Ores");
 		addConfigLabel("parameters", "Machine and Item Parameters");
 		addConfigLabel("mechanical_core.max_distance", "Mechanical Core Proxy Distance");
 		addConfigLabel("emberBore.speedMod", "Ember Bore Speed Modifier");

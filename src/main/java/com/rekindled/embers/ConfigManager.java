@@ -12,7 +12,13 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.config.ModConfig;
 
 public class ConfigManager {
+	public enum OreGenerationMode {
+		NEVER,
+		ALWAYS,
+		AUTO
+	}
 
+	public static ConfigValue<OreGenerationMode> ORE_GENERATION;
 	public static ConfigValue<Integer> MAX_PROXY_DISTANCE;
 	public static ConfigValue<Double> EMBER_BORE_SPEED_MOD;
 	public static ConfigValue<Integer> EMBER_BORE_TIME;
@@ -113,6 +119,20 @@ public class ConfigManager {
 
 	public static void registerCommonConfigs(ModContainer container) {
 		ModConfigSpec.Builder COMMON = new ModConfigSpec.Builder();
+
+		COMMON.comment("World generation settings")
+				.translation(Embers.MODID + ".configuration.worldgen")
+				.push("worldgen");
+
+		ORE_GENERATION = COMMON.comment(
+				"Controls Embers lead and silver ore generation.",
+				"NEVER disables both ores. ALWAYS generates both ores.",
+				"AUTO disables each Embers ore when another mod adds a matching ore feature to an Overworld biome.")
+				.translation(Embers.MODID + ".configuration.worldgen.generate_ores")
+				.defineEnum("generate_ores", OreGenerationMode.AUTO);
+
+		COMMON.pop();
+
 		COMMON.comment("Settings for machine/item/misc parameters").push("parameters");
 
 		MAX_PROXY_DISTANCE = COMMON.comment("The maximum distance that mechanical cores can proxy capabilities and upgrades.").define("mechanical_core.max_distance", 3);
