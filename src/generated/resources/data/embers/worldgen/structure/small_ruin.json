@@ -24,6 +24,6 @@
     "absolute": -10
   },
   "start_pool": "embers:small_ruin",
-  "step": "top_layer_modification",
+  "step": "underground_structures",
   "use_expansion_hack": false
 }

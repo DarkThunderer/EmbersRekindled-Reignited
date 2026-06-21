@@ -80,7 +80,7 @@ public class EmbersStructures {
 
 		bootstrap.register(SMALL_RUIN, new CaveStructure(new Structure.StructureSettings(ruinSpawns, Map.of(MobCategory.MONSTER,
 				new StructureSpawnOverride(BoundingBoxType.STRUCTURE, WeightedRandomList.create(new MobSpawnSettings.SpawnerData(RegistryManager.ANCIENT_GOLEM.get(), 20, 1, 1)))),
-				Decoration.TOP_LAYER_MODIFICATION, TerrainAdjustment.NONE),
+				Decoration.UNDERGROUND_STRUCTURES, TerrainAdjustment.NONE),
 				templatePool.getOrThrow(SMALL_RUIN_POOL), 2, ConstantHeight.of(VerticalAnchor.absolute(-10)), ConstantHeight.of(VerticalAnchor.aboveBottom(128)), false, Heightmap.Types.OCEAN_FLOOR_WG));
 	}
 

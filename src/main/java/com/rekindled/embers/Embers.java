@@ -139,7 +139,6 @@ public class Embers {
 		NeoForge.EVENT_BUS.addListener(EmbersCommands::register);
 		NeoForge.EVENT_BUS.addListener(EmbersLateWorldgen::onChunkLoad);
 		NeoForge.EVENT_BUS.addListener(EmbersLateWorldgen::onServerTick);
-		NeoForge.EVENT_BUS.addListener(EmbersLateWorldgen::onPotentialSpawns);
 	}
 
 	public void registerCaps(RegisterCapabilitiesEvent event) {
